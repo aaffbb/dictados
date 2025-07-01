@@ -1,142 +1,142 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lista de Dictados</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            margin: 20px;
-            background-color: #f4f4f9;
-            color: #333;
-        }
-        h1, h3 {
-            color: #2c3e50;
-        }
-        .dictation {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 20px;
-            background-color: #ffffff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .dictation-title {
-            font-weight: bold;
-            font-size: 1.3em;
-            color: #2980b9;
-            margin-bottom: 10px;
-        }
-        .dictation-text {
-            white-space: pre-wrap; /* Mantiene los saltos de línea del texto */
-            background-color: #fdfdfd;
-            padding: 10px;
-            border-left: 3px solid #bdc3c7;
-            margin: 10px 0;
-        }
-        .dictation-meta {
-            font-size: 0.9em;
-            color: #7f8c8d;
-            margin: 5px 0;
-        }
-        .rules {
-            margin-top: 15px;
-        }
-        .rules ul {
-            padding-left: 20px;
-            margin: 5px 0 0 0;
-        }
-        .rules li {
-            margin-bottom: 5px;
-        }
-        #results {
-            display: none; /* El script lo hará visible */
-        }
-    </style>
-</head>
 <body>
-
     <h1>Visor de Dictados</h1>
 
-    <div id="explanation">
-        </div>
+    <div id="filters">
+        <label for="cicloSelect"><strong>Ciclo:</strong></label>
+        <select id="cicloSelect">
+            <option value="todos">Todos</option>
+        </select>
+        &nbsp;&nbsp;
+        <label for="normaSelect"><strong>Norma ortográfica:</strong></label>
+        <select id="normaSelect">
+            <option value="todas">Todas</option>
+        </select>
+    </div>
+    <br>
 
+    <div id="explanation"></div>
     <div id="results">
-        <div id="dictations-list">
-            </div>
+        <div id="dictations-list"></div>
     </div>
 
     <script>
+        let dictados = [];
+        let ciclos = new Set();
+        let normas = {};
+
+        function extraerCiclo(texto) {
+            // Busca "Primer ciclo", "Segundo ciclo", etc. al principio del texto (mayúscula/minúscula)
+            const match = texto.match(/^\s*(Primer|Segundo|Tercer|Cuarto|Quinto)\s+ciclo/i);
+            return match ? match[0].trim() : "Sin ciclo";
+        }
+
         fetch('dictadosData.json')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok ' + response.statusText);
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
-                const listDiv = document.getElementById('dictations-list');
-                const resultsDiv = document.getElementById('results');
-                const explanationDiv = document.getElementById('explanation');
-                
-                explanationDiv.innerHTML = "<h3>Lista de dictados genéricos</h3>";
-                
-                // Asegurarse que data.genericos existe y es un array
-                if (data.genericos && Array.isArray(data.genericos)) {
-                    data.genericos.forEach(d => {
-                        const dictationDiv = document.createElement('div');
-                        dictationDiv.classList.add('dictation');
+                dictados = data.genericos.map(d => {
+                    const ciclo = extraerCiclo(d.texto);
+                    return {...d, ciclo: ciclo};
+                });
 
-                        // Título con el número de dictado
-                        dictationDiv.innerHTML = `<div class="dictation-title">Dictado ${d.numero}</div>`;
-                        
-                        // Texto del dictado
-                        const textElement = document.createElement('pre');
-                        textElement.classList.add('dictation-text');
-                        textElement.textContent = d.texto;
-                        dictationDiv.appendChild(textElement);
+                // Extrae ciclos únicos
+                dictados.forEach(d => ciclos.add(d.ciclo));
+                const cicloSelect = document.getElementById('cicloSelect');
+                ciclos.forEach(ciclo => {
+                    const opt = document.createElement('option');
+                    opt.value = ciclo;
+                    opt.textContent = ciclo;
+                    cicloSelect.appendChild(opt);
+                });
 
-                        // Autor y Colegio
-                        const authorElement = document.createElement('p');
-                        authorElement.classList.add('dictation-meta');
-                        authorElement.innerHTML = `<strong>Autor:</strong> ${d.autor}`;
-                        dictationDiv.appendChild(authorElement);
-
-                        const schoolElement = document.createElement('p');
-                        schoolElement.classList.add('dictation-meta');
-                        schoolElement.innerHTML = `<strong>Colegio:</strong> ${d.colegio}`;
-                        dictationDiv.appendChild(schoolElement);
-
-                        // Reglas de ortografía (si existen)
-                        if (d.reglas && Array.isArray(d.reglas) && d.reglas.length > 0) {
-                            const rulesDiv = document.createElement('div');
-                            rulesDiv.classList.add('rules');
-                            const rulesList = document.createElement('ul');
-                            
-                            d.reglas.forEach(ruleText => {
-                                const listItem = document.createElement('li');
-                                listItem.textContent = ruleText.replace(/\n/g, ' ').trim(); // Limpia saltos de línea
-                                rulesList.appendChild(listItem);
-                            });
-
-                            rulesDiv.innerHTML = '<strong>Reglas de Ortografía:</strong>';
-                            rulesDiv.appendChild(rulesList);
-                            dictationDiv.appendChild(rulesDiv);
-                        }
-
-                        listDiv.appendChild(dictationDiv);
+                // Prepara normas por ciclo
+                normas = {};
+                dictados.forEach(d => {
+                    if (!normas[d.ciclo]) normas[d.ciclo] = new Set();
+                    d.reglas.forEach(regla => {
+                        // Solo las primeras palabras para agrupar, puedes personalizar
+                        const tipo = regla.split('.')[0].trim();
+                        normas[d.ciclo].add(tipo);
                     });
-                }
-    
-                resultsDiv.style.display = 'block';
-            })
-            .catch(error => {
-                console.error("Error al cargar o procesar los datos del JSON:", error);
-                document.getElementById('explanation').innerHTML = "<h3>Error al cargar los dictados. Asegúrate de que el archivo 'dictadosData.json' se encuentre en el mismo directorio y no tenga errores.</h3>";
-            });
-    </script>
+                });
 
+                // Primer llenado de normas
+                updateNormaOptions("todos");
+
+                // Eventos
+                cicloSelect.addEventListener('change', e => {
+                    updateNormaOptions(e.target.value);
+                    mostrarDictados();
+                });
+                document.getElementById('normaSelect').addEventListener('change', mostrarDictados);
+
+                mostrarDictados();
+                document.getElementById('results').style.display = 'block';
+                document.getElementById('explanation').innerHTML = "<h3>Lista de dictados genéricos</h3>";
+            });
+
+        function updateNormaOptions(ciclo) {
+            const normaSelect = document.getElementById('normaSelect');
+            normaSelect.innerHTML = `<option value="todas">Todas</option>`;
+            let normasSet = new Set();
+            if (ciclo === "todos") {
+                // Todas las normas de todos los ciclos
+                Object.values(normas).forEach(set => set.forEach(v => normasSet.add(v)));
+            } else if (normas[ciclo]) {
+                normas[ciclo].forEach(v => normasSet.add(v));
+            }
+            Array.from(normasSet).sort().forEach(norm => {
+                const opt = document.createElement('option');
+                opt.value = norm;
+                opt.textContent = norm;
+                normaSelect.appendChild(opt);
+            });
+        }
+
+        function mostrarDictados() {
+            const ciclo = document.getElementById('cicloSelect').value;
+            const norma = document.getElementById('normaSelect').value;
+            const listDiv = document.getElementById('dictations-list');
+            listDiv.innerHTML = "";
+            dictados.forEach(d => {
+                if ((ciclo === "todos" || d.ciclo === ciclo) &&
+                    (norma === "todas" || d.reglas.some(r => r.split('.')[0].trim() === norma))
+                ) {
+                    const dictationDiv = document.createElement('div');
+                    dictationDiv.classList.add('dictation');
+                    dictationDiv.innerHTML = `<div class="dictation-title">Dictado ${d.numero}</div>`;
+                    const textElement = document.createElement('pre');
+                    textElement.classList.add('dictation-text');
+                    textElement.textContent = d.texto;
+                    dictationDiv.appendChild(textElement);
+
+                    // Autor y colegio
+                    const authorElement = document.createElement('p');
+                    authorElement.classList.add('dictation-meta');
+                    authorElement.innerHTML = `<strong>Autor:</strong> ${d.autor}`;
+                    dictationDiv.appendChild(authorElement);
+                    const schoolElement = document.createElement('p');
+                    schoolElement.classList.add('dictation-meta');
+                    schoolElement.innerHTML = `<strong>Colegio:</strong> ${d.colegio}`;
+                    dictationDiv.appendChild(schoolElement);
+
+                    // Reglas
+                    if (d.reglas && Array.isArray(d.reglas) && d.reglas.length > 0) {
+                        const rulesDiv = document.createElement('div');
+                        rulesDiv.classList.add('rules');
+                        const rulesList = document.createElement('ul');
+                        d.reglas.forEach(ruleText => {
+                            const listItem = document.createElement('li');
+                            listItem.textContent = ruleText.replace(/\n/g, ' ').trim();
+                            rulesList.appendChild(listItem);
+                        });
+                        rulesDiv.innerHTML = '<strong>Reglas de Ortografía:</strong>';
+                        rulesDiv.appendChild(rulesList);
+                        dictationDiv.appendChild(rulesDiv);
+                    }
+
+                    listDiv.appendChild(dictationDiv);
+                }
+            });
+        }
+    </script>
 </body>
-</html>
